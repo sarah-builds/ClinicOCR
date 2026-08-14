@@ -62,10 +62,22 @@ export async function getPatientRxCountsAction(): Promise<Record<string, number>
  * 4. Gemini AI → corrected text, medicines, summary, tags, findings
  */
 export async function processUploadOCRAndGeminiAction(base64Image: string) {
+  console.log("STEP 1: Server Action started");
+
   const qualityCheck = await analyzeImageQuality(base64Image);
+  console.log("STEP 2: Image quality check completed");
+
   const enhancedImage = await preprocessImage(base64Image);
+  console.log("STEP 3: Image preprocessing completed");
+
   const ocrResult = await runTesseractOCR(enhancedImage);
+  console.log("STEP 4: Tesseract completed", {
+    confidence: ocrResult.avgConfidence,
+    textLength: ocrResult.rawText.length,
+  });
+
   const geminiRefined = await refinePrescriptionWithGemini(ocrResult.rawText);
+  console.log("STEP 5: Gemini completed");
 
   return {
     enhancedImage,
