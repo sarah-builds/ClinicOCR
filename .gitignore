@@ -1,0 +1,7 @@
+node_modules/
+.next/
+.env
+.env.local
+.env*.local
+list_gen_models.mjs
+list_models.mjs
