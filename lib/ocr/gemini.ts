@@ -10,14 +10,17 @@ export interface GeminiRefinedOutput {
 }
 
 /**
- * Refines Raw OCR text using Google Gemini AI (gemini-3.6-flash)
+ * Refines Raw OCR text using Google Gemini AI with timeout and safe fallback
  */
 export async function refinePrescriptionWithGemini(
   rawOcrText: string
 ): Promise<GeminiRefinedOutput> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const GEMINI_TIMEOUT_MS = 10000;
 
-  const prompt = `
+  const geminiPromise = (async (): Promise<GeminiRefinedOutput> => {
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    const prompt = `
 You are an expert AI medical document assistant. You are given raw OCR text extracted from a handwritten doctor's prescription.
 Your task is to correct OCR typos, structure the medical information, extract all prescribed medicines, summarize the visit, identify important clinical findings, and assign relevant medical tags.
 
@@ -46,37 +49,56 @@ ${rawOcrText}
 """
 `;
 
-  if (apiKey && apiKey.length > 5) {
-    const modelsToTry = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"];
-    const genAI = new GoogleGenerativeAI(apiKey);
+    if (apiKey && apiKey.length > 5) {
+      const modelsToTry = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"];
+      const genAI = new GoogleGenerativeAI(apiKey);
 
-    for (const modelName of modelsToTry) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text() || "";
+      for (const modelName of modelsToTry) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent(prompt);
+          const responseText = result.response.text() || "";
 
-        const cleanedJson = responseText
-          .replace(/```json/g, "")
-          .replace(/```/g, "")
-          .trim();
+          const cleanedJson = responseText
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim();
 
-        const parsed = JSON.parse(cleanedJson);
-        return {
-          corrected_text: parsed.corrected_text || rawOcrText,
-          summary: parsed.summary || "Prescription digitized successfully.",
-          medicines: Array.isArray(parsed.medicines) ? parsed.medicines : [],
-          important_findings: Array.isArray(parsed.important_findings) ? parsed.important_findings : [],
-          tags: Array.isArray(parsed.tags) ? parsed.tags : ["Prescription"],
-        };
-      } catch (err) {
-        console.warn(`Gemini model ${modelName} call warning:`, err);
+          const parsed = JSON.parse(cleanedJson);
+          return {
+            corrected_text: parsed.corrected_text || rawOcrText,
+            summary: parsed.summary || "Prescription digitized successfully.",
+            medicines: Array.isArray(parsed.medicines) ? parsed.medicines : [],
+            important_findings: Array.isArray(parsed.important_findings) ? parsed.important_findings : [],
+            tags: Array.isArray(parsed.tags) ? parsed.tags : ["Prescription"],
+          };
+        } catch (err) {
+          console.warn(`OCR PIPELINE: GEMINI MODEL [${modelName}] WARNING:`, err);
+        }
       }
     }
-  }
 
-  // Fallback parser if API key is pending
-  return parseOcrFallback(rawOcrText);
+    // Fallback parser if API key is pending or models failed
+    return parseOcrFallback(rawOcrText);
+  })();
+
+  let timer: NodeJS.Timeout | null = null;
+  const timeoutPromise = new Promise<GeminiRefinedOutput>((resolve) => {
+    timer = setTimeout(() => {
+      console.warn("OCR PIPELINE: GEMINI TIMEOUT (Exceeded 10s) - using rule-based parser fallback");
+      resolve(parseOcrFallback(rawOcrText));
+    }, GEMINI_TIMEOUT_MS);
+  });
+
+  try {
+    const result = await Promise.race([geminiPromise, timeoutPromise]);
+    if (timer) clearTimeout(timer);
+    return result;
+  } catch (err) {
+    if (timer) clearTimeout(timer);
+    console.error("OCR PIPELINE: GEMINI ERROR:", err);
+    return parseOcrFallback(rawOcrText);
+  }
 }
 
 /**

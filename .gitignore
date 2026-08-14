@@ -5,3 +5,5 @@ node_modules/
 .env*.local
 list_gen_models.mjs
 list_models.mjs
+.vercel
+.env*
