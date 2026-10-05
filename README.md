@@ -6,7 +6,7 @@ ClinicOCR is a web application designed to simplify the process of converting me
 
 The application combines **Optical Character Recognition (OCR)** with **AI-powered processing** to extract useful information from uploaded clinical documents, organize the extracted content, and make it easier to review, manage, and generate digital reports.
 
-🌐 **Live Demo:** [ClinicOCR](https://clinic-ocr-seven.vercel.app)
+🌐 **Live Demo:** [ClinicOCR](https://clinic-ocr-virid.vercel.app/)
 
 ---
 
